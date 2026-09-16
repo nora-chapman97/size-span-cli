@@ -1,0 +1,15 @@
+[package]
+name = "sizespan"
+version = "0.1.0"
+edition = "2021"
+authors = ["nora-chapman97"]
+license = "MIT"
+description = "Parse and format byte sizes and durations"
+
+[lib]
+name = "sizespan"
+path = "src/lib.rs"
+
+[[bin]]
+name = "sizespan"
+path = "src/main.rs"
