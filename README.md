@@ -58,6 +58,14 @@ sizespan duration parse 1h30m    -> 5400000 ms
 sizespan duration fmt 5400       -> 1h30m
 ```
 
+Add `--json` at the end of any of the above to get a one-line JSON object
+instead of the plain-text form, for piping into `jq` or another script:
+
+```
+sizespan bytes parse 1.5MiB --json     -> {"input":"1.5MiB","bytes":1572864}
+sizespan duration fmt 5400 --json      -> {"input":"5400","text":"1h30m"}
+```
+
 ## Status
 
 Early. The parsing and formatting core is here with a table-driven test
