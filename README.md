@@ -66,6 +66,14 @@ sizespan bytes parse 1.5MiB --json     -> {"input":"1.5MiB","bytes":1572864}
 sizespan duration fmt 5400 --json      -> {"input":"5400","text":"1h30m"}
 ```
 
+The value can also come from stdin instead of an argument - either drop
+it entirely or pass `-` in its place:
+
+```
+echo 1.5MiB | sizespan bytes parse
+cat sizes.txt | sizespan bytes parse -
+```
+
 ## Status
 
 Early. The parsing and formatting core is here with a table-driven test

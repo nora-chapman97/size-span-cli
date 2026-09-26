@@ -21,8 +21,16 @@ fn main() -> ExitCode {
 
 fn run(args: &[String]) -> Result<String, String> {
     let (json, args) = strip_json_flag(args);
-    match args {
-        [cmd, sub, value] if cmd == "bytes" && sub == "parse" => {
+    let (cmd, sub, value_arg) = match args {
+        [cmd, sub, value] => (cmd.as_str(), sub.as_str(), Some(value.as_str())),
+        [cmd, sub] => (cmd.as_str(), sub.as_str(), None),
+        _ => return Err(usage()),
+    };
+    let value = resolve_value(value_arg, read_stdin)?;
+    let value = value.as_str();
+
+    match (cmd, sub) {
+        ("bytes", "parse") => {
             let size = ByteSize::from_str(value).map_err(|e| e.to_string())?;
             if json {
                 Ok(json_object(&[
@@ -33,7 +41,7 @@ fn run(args: &[String]) -> Result<String, String> {
                 Ok(format!("{} bytes", size.as_bytes()))
             }
         }
-        [cmd, sub, value] if cmd == "bytes" && sub == "fmt" => {
+        ("bytes", "fmt") => {
             let n: u64 = value
                 .parse()
                 .map_err(|_| format!("invalid byte count: {value:?}"))?;
@@ -47,7 +55,7 @@ fn run(args: &[String]) -> Result<String, String> {
                 Ok(text)
             }
         }
-        [cmd, sub, value] if cmd == "duration" && sub == "parse" => {
+        ("duration", "parse") => {
             let d = parse_duration(value).map_err(|e| e.to_string())?;
             if json {
                 Ok(json_object(&[
@@ -58,7 +66,7 @@ fn run(args: &[String]) -> Result<String, String> {
                 Ok(format!("{} ms", d.as_millis()))
             }
         }
-        [cmd, sub, value] if cmd == "duration" && sub == "fmt" => {
+        ("duration", "fmt") => {
             let secs: f64 = value
                 .parse()
                 .map_err(|_| format!("invalid seconds: {value:?}"))?;
@@ -77,6 +85,33 @@ fn run(args: &[String]) -> Result<String, String> {
         }
         _ => Err(usage()),
     }
+}
+
+/// Picks the value to operate on: the positional argument, or - if it was
+/// omitted entirely or given as the literal `-` - whatever `read_stdin`
+/// produces. Takes the reader as a closure so tests can supply canned input
+/// instead of touching the process's real stdin.
+fn resolve_value(
+    value_arg: Option<&str>,
+    read_stdin: impl FnOnce() -> Result<String, String>,
+) -> Result<String, String> {
+    match value_arg {
+        None | Some("-") => read_stdin(),
+        Some(v) => Ok(v.to_string()),
+    }
+}
+
+fn read_stdin() -> Result<String, String> {
+    use std::io::Read;
+    let mut buf = String::new();
+    std::io::stdin()
+        .read_to_string(&mut buf)
+        .map_err(|e| format!("failed to read from stdin: {e}"))?;
+    let trimmed = buf.trim();
+    if trimmed.is_empty() {
+        return Err("no input on stdin".to_string());
+    }
+    Ok(trimmed.to_string())
 }
 
 /// Pulls a trailing `--json` flag off the argument list, if present.
@@ -139,7 +174,9 @@ fn usage() -> String {
      sizespan bytes parse <text> [--json]      e.g. sizespan bytes parse 1.5MiB\n  \
      sizespan bytes fmt <n> [--json]           e.g. sizespan bytes fmt 1572864\n  \
      sizespan duration parse <text> [--json]   e.g. sizespan duration parse 1h30m\n  \
-     sizespan duration fmt <seconds> [--json]  e.g. sizespan duration fmt 5400"
+     sizespan duration fmt <seconds> [--json]  e.g. sizespan duration fmt 5400\n\n\
+     <text>/<n>/<seconds> can be `-` or omitted entirely to read from stdin,\n  \
+     e.g. echo 1.5MiB | sizespan bytes parse"
         .to_string()
 }
 
@@ -219,5 +256,32 @@ mod tests {
     fn json_escape_handles_quotes_and_backslashes() {
         assert_eq!(json_escape(r#"a"b\c"#), r#"a\"b\\c"#);
         assert_eq!(json_escape("tab\there"), "tab\\there");
+    }
+
+    #[test]
+    fn resolve_value_reads_stdin_when_value_missing_or_dash() {
+        assert_eq!(
+            resolve_value(None, || Ok("1h30m".to_string())).unwrap(),
+            "1h30m"
+        );
+        assert_eq!(
+            resolve_value(Some("-"), || Ok("1h30m".to_string())).unwrap(),
+            "1h30m"
+        );
+    }
+
+    #[test]
+    fn resolve_value_prefers_positional_arg_over_stdin() {
+        assert_eq!(
+            resolve_value(Some("5MB"), || panic!("should not read stdin")).unwrap(),
+            "5MB"
+        );
+    }
+
+    #[test]
+    fn resolve_value_propagates_stdin_errors() {
+        let err =
+            resolve_value(None, || Err("no input on stdin".to_string())).unwrap_err();
+        assert_eq!(err, "no input on stdin");
     }
 }
